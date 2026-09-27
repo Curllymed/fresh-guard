@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+:root {
+  --background: #07090e;
+  --foreground: #f8fafc;
+  --panel-bg: rgba(15, 23, 42, 0.75);
+  --panel-border: rgba(255, 255, 255, 0.08);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background-color: #07090e;
+  background-image: 
+    radial-gradient(at 15% 15%, rgba(16, 185, 129, 0.06) 0px, transparent 40%),
+    radial-gradient(at 85% 20%, rgba(59, 130, 246, 0.06) 0px, transparent 40%),
+    radial-gradient(at 50% 80%, rgba(139, 92, 246, 0.04) 0px, transparent 50%),
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+  color: #f1f5f9;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  background: rgba(13, 19, 33, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.glass-panel-hover {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-panel-hover:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+}
+
+/* LCD 1602 Display Styling */
+.lcd-screen {
+  background: #142a18;
+  border: 4px solid #1e293b;
+  border-radius: 6px;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.8), 0 4px 14px rgba(0, 0, 0, 0.4);
+  font-family: 'Courier New', Courier, monospace;
+  color: #4ade80;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+  letter-spacing: 2px;
+}
+
+.lcd-char-grid {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
+  background-size: 8px 12px;
+}
+
+/* Glowing LED lights */
+.led-glow-green {
+  background: #10b981;
+  box-shadow: 0 0 16px 4px rgba(16, 185, 129, 0.7), inset 0 0 4px #ffffff;
+}
+
+.led-glow-yellow {
+  background: #f59e0b;
+  box-shadow: 0 0 16px 4px rgba(245, 158, 11, 0.7), inset 0 0 4px #ffffff;
+}
+
+.led-glow-red {
+  background: #ef4444;
+  box-shadow: 0 0 16px 4px rgba(239, 68, 68, 0.7), inset 0 0 4px #ffffff;
+}
+
+.led-off {
+  background: #1e293b;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+  opacity: 0.35;
+}
+
+/* Subtle Pulse */
+@keyframes softPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-soft-pulse {
+  animation: softPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
