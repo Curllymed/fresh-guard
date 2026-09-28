@@ -57,7 +57,7 @@ export const ThresholdMatrixModal: React.FC<ThresholdMatrixModalProps> = ({
                 Food Threshold Matrix Configuration
               </h2>
               <p className="text-xs text-slate-400">
-                SRS §1.6.xi • Predefined safe limits for Multi-Factor Freshness Engine
+                Predefined safe limits for Multi-Factor Freshness Engine
               </p>
             </div>
           </div>
@@ -210,9 +210,7 @@ export const ThresholdMatrixModal: React.FC<ThresholdMatrixModalProps> = ({
 
         {/* Footer Actions */}
         <div className="flex items-center justify-between border-t border-white/10 pt-4">
-          <p className="text-[11px] text-slate-500 italic">
-            * Threshold values are calibrated prototype demo baselines (§1.6.xi).
-          </p>
+         
 
           <div className="flex items-center gap-3">
             <button

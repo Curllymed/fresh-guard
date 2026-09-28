@@ -153,9 +153,7 @@ export const IoTTestMatrixModal: React.FC<IoTTestMatrixModalProps> = ({
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-white/10 pt-4">
-          <p className="text-[11px] text-slate-500">
-            Meets minimum requirements for the SRS §1.9 project deliverables and test video demonstration.
-          </p>
+          
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-xl bg-slate-800 text-white text-xs hover:bg-slate-700 cursor-pointer"

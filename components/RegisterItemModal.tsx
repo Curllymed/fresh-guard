@@ -94,7 +94,7 @@ export const RegisterItemModal: React.FC<RegisterItemModalProps> = ({
                 Register Food Item via RFID-RC522
               </h2>
               <p className="text-xs text-slate-400">
-                SRS §1.6.i & §1.6.viii • Food Container Tagging
+               Food Container Tagging
               </p>
             </div>
           </div>
@@ -110,7 +110,7 @@ export const RegisterItemModal: React.FC<RegisterItemModalProps> = ({
           {/* RFID Tag UID Field with Scanner Button */}
           <div>
             <label className="text-slate-400 font-mono block mb-1 font-semibold flex items-center justify-between">
-              <span>RFID Card UID (RC522 SPI):</span>
+              <span>RFID Card UID :</span>
               <button
                 type="button"
                 onClick={handleSimulateRfidTap}
