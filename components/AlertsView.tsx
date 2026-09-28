@@ -72,7 +72,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
               Threshold Alerts & Smart Recommendations Center
             </h2>
             <p className="text-xs text-slate-400">
-              SRS §1.6.xii & §1.6.xviii • Local & Remote Proactive Notification Log
+               Local & Remote Proactive Notification Log
             </p>
           </div>
         </div>

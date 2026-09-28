@@ -309,7 +309,7 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                 Freshness Health & Zero Waste
               </h3>
               <p className="text-xs text-slate-400">
-                SRS Theme: Zero Food Waste Portfolio
+               
               </p>
             </div>
           </div>

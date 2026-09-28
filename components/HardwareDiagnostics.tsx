@@ -109,7 +109,7 @@ export const HardwareDiagnostics: React.FC<HardwareDiagnosticsProps> = ({
                 Raspberry Pi 3 Model B v1.2 Gateway Telemetry
               </h2>
               <p className="text-xs text-slate-400">
-                SRS §1.8.1 Host Controller • Broadcom BCM2837 Quad-Core 1.2GHz
+                
               </p>
             </div>
           </div>
@@ -181,9 +181,7 @@ export const HardwareDiagnostics: React.FC<HardwareDiagnosticsProps> = ({
               <h3 className="text-base font-bold text-white tracking-wide">
                 Hardware Pin-Mapping & Electrical Bus Table
               </h3>
-              <p className="text-xs text-slate-400">
-                Official SRS §1.9 Deliverables • Circuit Wiring Configuration
-              </p>
+              
             </div>
           </div>
         </div>

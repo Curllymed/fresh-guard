@@ -110,11 +110,9 @@ export const LcdLedMirror: React.FC<LcdLedMirrorProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white tracking-wide">
-                  Physical Status LEDs & RTC
+                  Physical Status LEDs
                 </h3>
-                <p className="text-xs text-slate-400">
-                  GPIO 27, 22, 23 & DS3231 I2C Clock
-                </p>
+                
               </div>
             </div>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-white/5">
@@ -125,7 +123,7 @@ export const LcdLedMirror: React.FC<LcdLedMirrorProps> = ({
           {/* Tri-Color LEDs Panel */}
           <div className="mt-3 p-3 bg-slate-900/80 rounded-xl border border-white/5">
             <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 mb-2">
-              Physical Cabinet Tri-Color LEDs (§1.6.xvi):
+              Tri-Color LEDs 
             </div>
             <div className="grid grid-cols-3 gap-3 text-center">
               {/* Green LED */}

@@ -89,7 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-500/15 text-orange-400 border border-orange-500/40">
             <XCircle className="w-3.5 h-3.5" />
-            SENSOR FAULT (§1.6.vii)
+            SENSOR FAULT 
           </span>
         );
     }
@@ -110,13 +110,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
                   FreshGuard<span className="text-emerald-400">.IoT</span>
                 </span>
-                <span className="px-2 py-0.5 text-[10px] uppercase font-mono tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
-                  v1.0 SRS
-                </span>
+                
               </div>
-              <p className="text-xs text-slate-400 hidden sm:block">
-                Zero Food Waste • Smart Cold-Chain Telemetry
-              </p>
+              
             </div>
           </div>
 
@@ -167,7 +163,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               title="IoT Test Matrix Evaluation Suite (§1.6.xxi)"
             >
               <FlaskConical className="w-4 h-4 text-purple-400" />
-              <span className="hidden xl:inline">Test Matrix (§1.6.xxi)</span>
+              <span className="hidden xl:inline">Test Matrix </span>
             </button>
 
             {/* Alert Notifications Button */}
@@ -209,7 +205,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
-            RFID Inventory & Freshness (§1.6.viii)
+            RFID Inventory & Freshness 
           </button>
 
           <button
@@ -221,7 +217,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Cpu className="w-3.5 h-3.5" />
-            Hardware Diagnostics & Pinout (§1.8.1)
+            Hardware Diagnostics & Pinout 
           </button>
 
           <button
