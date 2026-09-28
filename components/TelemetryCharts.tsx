@@ -107,9 +107,7 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                 <h3 className="text-sm font-bold text-white tracking-wide">
                   Environmental Telemetry & Spoilage Trends
                 </h3>
-                <p className="text-xs text-slate-400">
-                  SRS §1.6.xx • DHT-11 & MQ-135 (ADS1115 ADC)
-                </p>
+                
               </div>
             </div>
 
@@ -295,9 +293,7 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
               <span className="w-2.5 h-0.5 bg-emerald-400" /> Gas ADS1115
             </span>
           </div>
-          <span className="text-[10px] text-slate-500">
-            Debounce & smoothing applied (§1.6.v)
-          </span>
+          
         </div>
       </div>
 

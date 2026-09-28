@@ -53,42 +53,19 @@ export const LcdLedMirror: React.FC<LcdLedMirrorProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white tracking-wide">
-                  LCD 1602A v5.5 Digital Twin
+                  Display Status
                 </h3>
-                <p className="text-xs text-slate-400">
-                  PCF8574 I2C Expansion Backpack • Bus Address <span className="font-mono text-cyan-400">0x27</span>
-                </p>
+                
               </div>
             </div>
 
-            {/* Backlight Color Selector */}
-            <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-white/5">
-              <span className="text-[10px] text-slate-500 px-1 font-mono uppercase">Color:</span>
-              <button
-                onClick={() => setBacklightTheme('emerald')}
-                className={`w-4 h-4 rounded-full bg-emerald-500 transition-all ${backlightTheme === 'emerald' ? 'ring-2 ring-white scale-110' : 'opacity-60'}`}
-                title="Emerald Matrix"
-              />
-              <button
-                onClick={() => setBacklightTheme('blue')}
-                className={`w-4 h-4 rounded-full bg-cyan-500 transition-all ${backlightTheme === 'blue' ? 'ring-2 ring-white scale-110' : 'opacity-60'}`}
-                title="Cobalt Matrix"
-              />
-              <button
-                onClick={() => setBacklightTheme('amber')}
-                className={`w-4 h-4 rounded-full bg-amber-500 transition-all ${backlightTheme === 'amber' ? 'ring-2 ring-white scale-110' : 'opacity-60'}`}
-                title="Amber Matrix"
-              />
-            </div>
+            
+            
           </div>
 
           {/* Realistic 16x2 Bezel and Dot Matrix Panel */}
           <div className="mt-3 p-4 bg-[#0a0f1d] rounded-xl border-2 border-slate-700/60 shadow-inner">
-            <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono mb-2 px-1">
-              <span>HD44780 CONTROLLER</span>
-              <span>16 CHARACTERS x 2 LINES</span>
-              <span>I2C PCF8574T</span>
-            </div>
+            
 
             {/* The Actual Screen Glass */}
             <div
@@ -117,11 +94,9 @@ export const LcdLedMirror: React.FC<LcdLedMirrorProps> = ({
         <div className="mt-4 pt-3 border-t border-white/5 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-mono text-slate-300">LCD Bus: Sync Active</span>
+            <span className="font-mono text-slate-300">LCD: Sync Active</span>
           </div>
-          <span className="text-[11px] text-slate-500">
-            SRS §1.6.xvi: Mirrors local chamber display in real-time
-          </span>
+          
         </div>
       </div>
 

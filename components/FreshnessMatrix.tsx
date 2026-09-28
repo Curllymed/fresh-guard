@@ -123,9 +123,7 @@ export const FreshnessMatrix: React.FC<FreshnessMatrixProps> = ({
               <h2 className="text-lg font-bold text-white tracking-wide">
                 Food Inventory & Freshness Decision Matrix
               </h2>
-              <p className="text-xs text-slate-400">
-                SRS §1.6.viii, §1.6.x & §1.6.xi • Multi-Factor Freshness Engine
-              </p>
+              
             </div>
           </div>
         </div>
@@ -177,12 +175,12 @@ export const FreshnessMatrix: React.FC<FreshnessMatrixProps> = ({
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="border-b border-white/10 bg-slate-900/80 text-slate-400 uppercase font-mono text-[10px] tracking-wider">
-              <th className="py-3 px-4">RFID UID (RC522)</th>
+              <th className="py-3 px-4">UID</th>
               <th className="py-3 px-4">Food Item & Storage Zone</th>
               <th className="py-3 px-4">Category</th>
-              <th className="py-3 px-4">Stored Date (DS3231)</th>
+              <th className="py-3 px-4">Stored Date </th>
               <th className="py-3 px-4">Shelf-Life Days</th>
-              <th className="py-3 px-4">Freshness State (§1.6.xi)</th>
+              <th className="py-3 px-4">Freshness State </th>
               <th className="py-3 px-4 text-right">Actions</th>
             </tr>
           </thead>

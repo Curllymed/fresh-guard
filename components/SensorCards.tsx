@@ -45,7 +45,7 @@ export const SensorCards: React.FC<SensorCardsProps> = ({ telemetry }) => {
               </div>
               <div>
                 <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Chamber Temp</span>
-                <p className="text-[10px] text-slate-500 font-mono">DHT-11 (GPIO 4)</p>
+                <p className="text-[10px] text-slate-500 font-mono"></p>
               </div>
             </div>
 
@@ -118,7 +118,7 @@ export const SensorCards: React.FC<SensorCardsProps> = ({ telemetry }) => {
               </div>
               <div>
                 <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Chamber Humidity</span>
-                <p className="text-[10px] text-slate-500 font-mono">DHT-11 (1-Wire)</p>
+                
               </div>
             </div>
             <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-300 border border-blue-500/20">
@@ -182,7 +182,7 @@ export const SensorCards: React.FC<SensorCardsProps> = ({ telemetry }) => {
               </div>
               <div>
                 <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Gas & Air Quality</span>
-                <p className="text-[10px] text-slate-500 font-mono">MQ-135 + ADS1115 (A0)</p>
+                
               </div>
             </div>
 
@@ -259,7 +259,7 @@ export const SensorCards: React.FC<SensorCardsProps> = ({ telemetry }) => {
               </div>
               <div>
                 <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Door Monitor</span>
-                <p className="text-[10px] text-slate-500 font-mono">Reed Switch (GPIO 17)</p>
+                
               </div>
             </div>
 
