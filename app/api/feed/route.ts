@@ -50,6 +50,7 @@ function isValidTelemetry(body: unknown): body is TelemetryPayload {
  * Dashboard -> Vercel -> Redis
  *
  * Returns the latest telemetry received from the Raspberry Pi.
+ * added comment for deployment
  */
 export async function GET() {
   try {

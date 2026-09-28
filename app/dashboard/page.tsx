@@ -42,7 +42,7 @@ import { XCircle, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 | IMPORTANT:
 | The Raspberry Pi currently does not send all fields required by
 | SensorTelemetry, so unsupported fields are preserved from the previous
-| dashboard state.
+| dashboard state.Need to test.
 |--------------------------------------------------------------------------
 */
 
