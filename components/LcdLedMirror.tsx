@@ -176,7 +176,7 @@ export const LcdLedMirror: React.FC<LcdLedMirrorProps> = ({
               </div>
               <span className="text-emerald-400 font-semibold flex items-center gap-1">
                 <Check className="w-3 h-3" />
-                {hardware.ds3231.batteryVoltage}V (CR2032 OK)
+                {hardware.ds3231.batteryVoltage}V 
               </span>
             </div>
 

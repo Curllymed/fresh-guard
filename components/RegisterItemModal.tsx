@@ -91,7 +91,7 @@ export const RegisterItemModal: React.FC<RegisterItemModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-bold text-white tracking-wide">
-                Register Food Item via RFID-RC522
+                Register Food Item via RFID-Tag/Card
               </h2>
               <p className="text-xs text-slate-400">
                Food Container Tagging
