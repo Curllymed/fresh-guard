@@ -1,6 +1,9 @@
 import { Redis } from '@upstash/redis';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const redis = Redis.fromEnv();
 
 const TELEMETRY_KEY = 'freshguard:telemetry';
