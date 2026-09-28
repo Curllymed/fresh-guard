@@ -121,7 +121,7 @@ export const FreshnessMatrix: React.FC<FreshnessMatrixProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white tracking-wide">
-                RFID-RC522 Food Inventory & Freshness Decision Matrix
+                Food Inventory & Freshness Decision Matrix
               </h2>
               <p className="text-xs text-slate-400">
                 SRS §1.6.viii, §1.6.x & §1.6.xi • Multi-Factor Freshness Engine
@@ -169,15 +169,6 @@ export const FreshnessMatrix: React.FC<FreshnessMatrixProps> = ({
             <option value="CHECK_FOOD">Check Food</option>
             <option value="SENSOR_FAULT">Sensor Fault</option>
           </select>
-
-          {/* Register Button */}
-          <button
-            onClick={onOpenRegisterModal}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all cursor-pointer shadow-md shadow-emerald-500/20"
-          >
-            <Plus className="w-4 h-4" />
-            Register Item
-          </button>
         </div>
       </div>
 

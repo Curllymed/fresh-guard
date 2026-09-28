@@ -127,14 +127,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* DS3231 Real-Time Clock Bar */}
             <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-900/80 border border-white/10 text-xs font-mono text-slate-300">
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-slate-400 text-[11px]">RTC (DS3231):</span>
+              <span className="text-slate-400 text-[11px]">Time:</span>
               <span className="text-cyan-300 font-semibold">{rtcTime || 'Syncing...'}</span>
             </div>
 
             {/* Pi 3B Online Pill */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/20 text-xs text-emerald-300 font-mono">
               <Cpu className="w-3.5 h-3.5 text-emerald-400" />
-              <span>RPi-3B (192.168.1.105)</span>
+              <span>Raspberry Pi 3</span>
             </div>
           </div>
 
