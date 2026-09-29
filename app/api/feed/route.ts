@@ -8,14 +8,40 @@ const redis = Redis.fromEnv();
 
 const TELEMETRY_KEY = 'freshguard:telemetry';
 
+interface RfidItemPayload {
+  tag_uid: string;
+  item_id: string;
+  item_name: string;
+  in_storage: boolean;
+}
+
 interface TelemetryPayload {
   event_id: string;
   timestamp: string;
+
   temperature: number;
   humidity: number;
+
   gas_voltage: number;
+  gasRaw: number;
+  gasBaseline: number;
+  gasRatio: number;
+
   door_open: boolean;
+  doorOpenSeconds: number;
+  doorOpenCountToday: number;
+
   wifi_connected: boolean;
+
+  ds3231Health: boolean;
+  rc522Health: boolean;
+  reedSwitchHealth: boolean;
+
+  psuVoltage: number;
+  piCpuTemperature: number;
+
+  rfidItems: RfidItemPayload[];
+
   status: string;
   sensor_fault: boolean | string | null;
   item_count: number;

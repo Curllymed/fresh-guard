@@ -1,6 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+} from 'react';
+
 import { Navbar } from '@/components/Navbar';
 import { SensorCards } from '@/components/SensorCards';
 import { LcdLedMirror } from '@/components/LcdLedMirror';
@@ -8,7 +14,7 @@ import { FreshnessMatrix } from '@/components/FreshnessMatrix';
 import { TelemetryCharts } from '@/components/TelemetryCharts';
 import { ThresholdMatrixModal } from '@/components/ThresholdMatrixModal';
 import { IoTTestMatrixModal } from '@/components/IoTTestMatrixModal';
-import { RegisterItemModal } from '@/components/RegisterItemModal';
+import RegisterItemModal from '@/components/RegisterItemModal';
 import { HardwareDiagnostics } from '@/components/HardwareDiagnostics';
 import { AlertsView } from '@/components/AlertsView';
 
@@ -30,30 +36,53 @@ import {
   ThresholdMatrixEntry,
 } from '@/lib/types';
 
-import { XCircle, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import {
+  XCircle,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+} from 'lucide-react';
 
 /*
 |--------------------------------------------------------------------------
 | API telemetry shape
 |--------------------------------------------------------------------------
-| This matches the payload currently being sent by Raspberry Pi to:
-| /api/feed
-|
-| IMPORTANT:
-| The Raspberry Pi currently does not send all fields required by
-| SensorTelemetry, so unsupported fields are preserved from the previous
-| dashboard state.Need to test.
-|--------------------------------------------------------------------------
 */
+
+interface FeedRfidItem {
+  tag_uid: string;
+  item_id: string;
+  item_name: string;
+  in_storage: boolean;
+}
 
 interface FeedTelemetry {
   event_id: string;
   timestamp: string;
+
   temperature: number;
   humidity: number;
+
   gas_voltage: number;
+  gasRaw: number;
+  gasBaseline: number;
+  gasRatio: number;
+
   door_open: boolean;
+  doorOpenSeconds: number;
+  doorOpenCountToday: number;
+
   wifi_connected: boolean;
+
+  ds3231Health: boolean;
+  rc522Health: boolean;
+  reedSwitchHealth: boolean;
+
+  psuVoltage: number;
+  piCpuTemperature: number;
+
+  rfidItems: FeedRfidItem[];
+
   status: string;
   sensor_fault: boolean | string | null;
   item_count: number;
@@ -68,17 +97,38 @@ interface FeedResponse {
 
 /*
 |--------------------------------------------------------------------------
+| Pending RFID
+|--------------------------------------------------------------------------
+|
+| These are RFID tags detected by the Raspberry Pi that have not yet
+| been registered as food items.
+|
+*/
+
+interface PendingRfid {
+  event_id: string;
+  timestamp: string;
+  tag_uid: string;
+  status: 'UNREGISTERED';
+}
+
+/*
+|--------------------------------------------------------------------------
 | Helpers
 |--------------------------------------------------------------------------
 */
 
-function isSensorFault(value: boolean | string | null): boolean {
+function isSensorFault(
+  value: boolean | string | null
+): boolean {
   if (value === true) {
     return true;
   }
 
   if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
+    const normalized = value
+      .trim()
+      .toLowerCase();
 
     return [
       'true',
@@ -87,7 +137,7 @@ function isSensorFault(value: boolean | string | null): boolean {
       'sensor fault',
       'error',
       'failed',
-        'offline',
+      'offline',
     ].includes(normalized);
   }
 
@@ -102,7 +152,9 @@ function parseFreshnessStatus(
     return 'SENSOR_FAULT';
   }
 
-  const normalized = status.trim().toLowerCase();
+  const normalized = status
+    .trim()
+    .toLowerCase();
 
   if (
     normalized.includes('sensor fault') ||
@@ -140,6 +192,12 @@ function parseFreshnessStatus(
   return null;
 }
 
+/*
+|--------------------------------------------------------------------------
+| Dashboard
+|--------------------------------------------------------------------------
+*/
+
 export default function DashboardPage() {
   /*
   |--------------------------------------------------------------------------
@@ -147,20 +205,29 @@ export default function DashboardPage() {
   |--------------------------------------------------------------------------
   */
 
+  const [pendingRfids, setPendingRfids] =
+    useState<PendingRfid[]>([]);
+
   const [telemetry, setTelemetry] =
-    useState<SensorTelemetry>(INITIAL_TELEMETRY);
+    useState<SensorTelemetry>(
+      INITIAL_TELEMETRY
+    );
 
   const [items, setItems] =
     useState<FoodItem[]>(INITIAL_ITEMS);
 
   const [hardware, setHardware] =
-    useState<HardwareStatus>(INITIAL_HARDWARE_STATUS);
+    useState<HardwareStatus>(
+      INITIAL_HARDWARE_STATUS
+    );
 
   const [alerts, setAlerts] =
     useState<Alert[]>(INITIAL_ALERTS);
 
   const [thresholds, setThresholds] =
-    useState<ThresholdMatrixEntry[]>(INITIAL_THRESHOLDS);
+    useState<ThresholdMatrixEntry[]>(
+      INITIAL_THRESHOLDS
+    );
 
   /*
   |--------------------------------------------------------------------------
@@ -169,7 +236,10 @@ export default function DashboardPage() {
   */
 
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'inventory' | 'diagnostics' | 'alerts'
+    'overview' |
+    'inventory' |
+    'diagnostics' |
+    'alerts'
   >('overview');
 
   const [isTestMatrixOpen, setIsTestMatrixOpen] =
@@ -210,181 +280,311 @@ export default function DashboardPage() {
 
   /*
   |--------------------------------------------------------------------------
+  | Fetch pending RFID tags
+  |--------------------------------------------------------------------------
+  */
+
+  const fetchPendingRfids =
+    useCallback(async () => {
+      try {
+        const response = await fetch(
+          '/api/rfid/pending',
+          {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+              Accept: 'application/json',
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Pending RFID API returned HTTP ${response.status}`
+          );
+        }
+
+        const result = await response.json();
+
+        if (
+          result.success &&
+          Array.isArray(result.data)
+        ) {
+          setPendingRfids(
+            result.data as PendingRfid[]
+          );
+        }
+      } catch (error) {
+        console.error(
+          '[Dashboard] Pending RFID fetch failed:',
+          error
+        );
+      }
+    }, []);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Fetch registered food items
+  |--------------------------------------------------------------------------
+  |
+  | The /api/items endpoint is now the authoritative remote registry.
+  |
+  */
+
+  const fetchItems =
+    useCallback(async () => {
+      try {
+        const response = await fetch(
+          '/api/items',
+          {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+              Accept: 'application/json',
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Items API returned HTTP ${response.status}`
+          );
+        }
+
+        const result = await response.json();
+
+        /*
+         * /api/items currently returns the array directly.
+         */
+        if (Array.isArray(result)) {
+          setItems(
+            result as FoodItem[]
+          );
+          return;
+        }
+
+        /*
+         * Also support a wrapped response in case the API
+         * is changed later.
+         */
+        if (
+          result?.success &&
+          Array.isArray(result.data)
+        ) {
+          setItems(
+            result.data as FoodItem[]
+          );
+        }
+      } catch (error) {
+        console.error(
+          '[Dashboard] Registered items fetch failed:',
+          error
+        );
+      }
+    }, []);
+
+  /*
+  |--------------------------------------------------------------------------
   | Live telemetry polling
   |--------------------------------------------------------------------------
   |
-  | The dashboard calls /api/feed every 3 seconds.
-  | ADDIN A TEST COMMENT
-  | We use a relative URL because the dashboard and API are deployed
-  | together on the same Next.js/Vercel application.
+  | /api/feed is polled every 3 seconds.
   |
-  | The IoT test matrix temporarily pauses polling while it is open so
-  | that local test scenarios are not immediately overwritten by live data.
+  | Pending RFID tags are also checked every 3 seconds.
+  |
+  | Registered items are refreshed from /api/items every 3 seconds.
+  |
+  | IoT Test Matrix pauses all live polling while open.
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
     let cancelled = false;
 
-    const fetchLiveTelemetry = async () => {
-      try {
-        const response = await fetch('/api/feed', {
-          method: 'GET',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-          },
-        });
+    const fetchLiveTelemetry =
+      async () => {
+        try {
+          const response = await fetch(
+            '/api/feed',
+            {
+              method: 'GET',
+              cache: 'no-store',
+              headers: {
+                Accept:
+                  'application/json',
+              },
+            }
+          );
 
-        if (!response.ok) {
-          throw new Error(
-            `Feed API returned HTTP ${response.status}`
+          if (!response.ok) {
+            throw new Error(
+              `Feed API returned HTTP ${response.status}`
+            );
+          }
+
+          const result =
+            (await response.json()) as FeedResponse;
+
+          if (
+            !result.success ||
+            !result.data
+          ) {
+            throw new Error(
+              result.error ||
+                'No telemetry data received.'
+            );
+          }
+
+          const data = result.data;
+
+          if (cancelled) {
+            return;
+          }
+
+          const sensorFault =
+            isSensorFault(
+              data.sensor_fault
+            );
+
+          const parsedStatus =
+            parseFreshnessStatus(
+              data.status,
+              sensorFault
+            );
+
+          /*
+          |--------------------------------------------------------------------------
+          | Update telemetry
+          |--------------------------------------------------------------------------
+          */
+
+          setTelemetry(
+            (previous) => ({
+              ...previous,
+
+              temperature:
+                data.temperature,
+
+              humidity:
+                data.humidity,
+
+              gasVoltage:
+                data.gas_voltage,
+
+              gasRaw:
+                data.gasRaw,
+
+              gasBaseline:
+                data.gasBaseline,
+
+              gasRatio:
+                data.gasRatio,
+
+              doorOpen:
+                data.door_open,
+
+              doorOpenSeconds:
+                data.doorOpenSeconds,
+
+              doorOpenCountToday:
+                data.doorOpenCountToday,
+
+              dht11Healthy:
+                !sensorFault,
+
+              ads1115Healthy:
+                !sensorFault,
+
+              mq135Healthy:
+                !sensorFault,
+
+              ds3231Healthy:
+                data.ds3231Health,
+
+              rc522Healthy:
+                data.rc522Health,
+
+              reedSwitchHealthy:
+                data.reedSwitchHealth,
+
+              psuVoltage:
+                data.psuVoltage,
+
+              lastUpdated:
+                data.timestamp,
+            })
+          );
+
+          /*
+          |--------------------------------------------------------------------------
+          | Live status
+          |--------------------------------------------------------------------------
+          */
+
+          setLiveStatus(
+            parsedStatus
+          );
+
+          setFeedOnline(true);
+          setFeedLoading(false);
+          setFeedError(null);
+
+          setLastReceivedAt(
+            new Date().toLocaleTimeString()
+          );
+
+          setLiveItemCount(
+            data.item_count
+          );
+
+          setLiveEventId(
+            data.event_id
+          );
+        } catch (error) {
+          if (cancelled) {
+            return;
+          }
+
+          console.error(
+            '[Dashboard] Unable to fetch FreshGuard telemetry:',
+            error
+          );
+
+          setFeedOnline(false);
+          setFeedLoading(false);
+
+          setLiveStatus(
+            'SENSOR_FAULT'
+          );
+
+          setFeedError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to retrieve telemetry.'
           );
         }
-
-        const result =
-          (await response.json()) as FeedResponse;
-        console.log(result);
-
-        if (!result.success || !result.data) {
-          throw new Error(
-            result.error || 'No telemetry data received.'
-          );
-        }
-
-        const data = result.data;
-
-        if (cancelled) {
-          return;
-        }
-
-        const sensorFault = isSensorFault(
-          data.sensor_fault
-        );
-
-        const parsedStatus = parseFreshnessStatus(
-          data.status,
-          sensorFault
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | Update only fields that actually come from Raspberry Pi.
-        |--------------------------------------------------------------------------
-        |
-        | gasRaw, gasBaseline, gasRatio, gasStatus and several hardware
-        | diagnostics are NOT currently included in /api/feed.
-        |
-        | Therefore we deliberately preserve their previous values instead
-        | of inventing live values.
-        |--------------------------------------------------------------------------
-        */
-
-        setTelemetry((previous) => ({
-          ...previous,
-
-          temperature: data.temperature,
-          humidity: data.humidity,
-
-          gasVoltage: data.gas_voltage,
-
-          doorOpen: data.door_open,
-
-          /*
-           * We do not receive door-open duration from the current API.
-           * Reset it to zero when closed, otherwise preserve the previous
-           * value.
-           */
-          doorOpenSeconds: data.door_open
-            ? previous.doorOpenSeconds
-            : 0,
-
-          /*
-           * The current API exposes one aggregate sensor_fault field,
-           * rather than individual health flags.
-           *
-           * When there is a fault, we conservatively mark these sensor
-           * channels as unhealthy.
-           *
-           * When there is no fault, they are considered healthy.
-           */
-          dht11Healthy: !sensorFault,
-          ads1115Healthy: !sensorFault,
-          mq135Healthy: !sensorFault,
-
-          /*
-           * These sensors are not individually reported by the API.
-           * Preserve their existing dashboard values.
-           */
-          ds3231Healthy: previous.ds3231Healthy,
-          rc522Healthy: previous.rc522Healthy,
-          reedSwitchHealthy: previous.reedSwitchHealthy,
-
-          /*
-           * The current API does not report PSU voltage.
-           */
-          psuVoltage: previous.psuVoltage,
-
-          /*
-           * Keep unsupported gas fields unchanged.
-           */
-          gasRaw: previous.gasRaw,
-          gasBaseline: previous.gasBaseline,
-          gasRatio: previous.gasRatio,
-          gasStatus: previous.gasStatus,
-
-          lastUpdated: data.timestamp,
-        }));
-
-        setLiveStatus(parsedStatus);
-
-        setFeedOnline(true);
-        setFeedLoading(false);
-        setFeedError(null);
-
-        setLastReceivedAt(
-          new Date().toLocaleTimeString()
-        );
-
-        setLiveItemCount(data.item_count);
-        setLiveEventId(data.event_id);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        console.error(
-          '[Dashboard] Unable to fetch FreshGuard telemetry:',
-          error
-        );
-
-        /*
-         * Do not continue showing Fresh/Normal when the live feed
-         * itself has stopped working.
-         */
-        setFeedOnline(false);
-        setFeedLoading(false);
-        setLiveStatus('SENSOR_FAULT');
-
-        setFeedError(
-          error instanceof Error
-            ? error.message
-            : 'Unable to retrieve telemetry.'
-        );
-      }
-    };
+      };
 
     /*
-     * Fetch immediately when dashboard loads.
-     */
+    |--------------------------------------------------------------------------
+    | Initial requests
+    |--------------------------------------------------------------------------
+    */
+
     fetchLiveTelemetry();
-    console.log('Dashboard loaded')
+    fetchPendingRfids();
+    fetchItems();
+
+    console.log(
+      '[Dashboard] Dashboard loaded'
+    );
 
     /*
-     * When the IoT Test Matrix is open, stop polling temporarily.
-     * This allows local test scenarios to work without being overwritten
-     * every 3 seconds.
-     */
+    |--------------------------------------------------------------------------
+    | Pause live polling during IoT testing
+    |--------------------------------------------------------------------------
+    */
+
     if (isTestMatrixOpen) {
       return () => {
         cancelled = true;
@@ -392,18 +592,29 @@ export default function DashboardPage() {
     }
 
     /*
-     * Continue polling every 3 seconds.
-     */
-    const interval = window.setInterval(
-      fetchLiveTelemetry,
-      3000
-    );
+    |--------------------------------------------------------------------------
+    | Poll all live data every 3 seconds
+    |--------------------------------------------------------------------------
+    */
+
+    const interval =
+      window.setInterval(() => {
+        fetchLiveTelemetry();
+        fetchPendingRfids();
+        fetchItems();
+      }, 3000);
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      window.clearInterval(
+        interval
+      );
     };
-  }, [isTestMatrixOpen]);
+  }, [
+    isTestMatrixOpen,
+    fetchPendingRfids,
+    fetchItems,
+  ]);
 
   /*
   |--------------------------------------------------------------------------
@@ -411,12 +622,16 @@ export default function DashboardPage() {
   |--------------------------------------------------------------------------
   */
 
-  const overallStatus: FreshnessState = useMemo(() => {
+  const overallStatus:
+    FreshnessState = useMemo(() => {
     /*
-     * If the API connection has failed after initial loading,
-     * do not display a misleading Fresh status.
+     * If the API connection has failed after
+     * initial loading, do not show Fresh.
      */
-    if (!feedLoading && !feedOnline) {
+    if (
+      !feedLoading &&
+      !feedOnline
+    ) {
       return 'SENSOR_FAULT';
     }
 
@@ -434,31 +649,42 @@ export default function DashboardPage() {
     /*
      * Temperature safety override.
      */
-    if (telemetry.temperature > 8.0) {
+    if (
+      telemetry.temperature > 8.0
+    ) {
       return 'CHECK_FOOD';
     }
 
     /*
-     * During normal live operation, the status calculated by the
-     * Raspberry Pi is authoritative.
+     * During normal live operation,
+     * Raspberry Pi status is authoritative.
      */
     if (liveStatus) {
       return liveStatus;
     }
 
     /*
-     * Fallback for local IoT test scenarios.
+     * Local test fallback.
      */
     if (
-      telemetry.gasStatus === 'SPOILAGE_WARNING' ||
-      items.some((item) => item.status === 'CHECK_FOOD')
+      telemetry.gasStatus ===
+        'SPOILAGE_WARNING' ||
+      items.some(
+        (item) =>
+          item.status ===
+          'CHECK_FOOD'
+      )
     ) {
       return 'CHECK_FOOD';
     }
 
     if (
       telemetry.temperature > 4.5 ||
-      items.some((item) => item.status === 'USE_SOON')
+      items.some(
+        (item) =>
+          item.status ===
+          'USE_SOON'
+      )
     ) {
       return 'USE_SOON';
     }
@@ -478,32 +704,54 @@ export default function DashboardPage() {
   |--------------------------------------------------------------------------
   */
 
-  const displayHardware: HardwareStatus = useMemo(() => {
-    let activeLed: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN';
+  const displayHardware:
+    HardwareStatus = useMemo(() => {
+    let activeLed:
+      | 'GREEN'
+      | 'YELLOW'
+      | 'RED' = 'GREEN';
 
-    let lcdLine2 = 'STATUS: FRESH-OK';
+    let lcdLine2 =
+      'STATUS: FRESH-OK';
 
-    if (overallStatus === 'SENSOR_FAULT') {
+    if (
+      overallStatus ===
+      'SENSOR_FAULT'
+    ) {
       activeLed = 'YELLOW';
-      lcdLine2 = 'SENSOR FAULT §1.7';
-    } else if (overallStatus === 'CHECK_FOOD') {
+      lcdLine2 =
+        'SENSOR FAULT §1.7';
+    } else if (
+      overallStatus ===
+      'CHECK_FOOD'
+    ) {
       activeLed = 'RED';
-      lcdLine2 = 'ALARM: CHECK FOOD';
-    } else if (overallStatus === 'USE_SOON') {
+      lcdLine2 =
+        'ALARM: CHECK FOOD';
+    } else if (
+      overallStatus ===
+      'USE_SOON'
+    ) {
       activeLed = 'YELLOW';
-      lcdLine2 = 'STATE: USE SOON';
+      lcdLine2 =
+        'STATE: USE SOON';
     }
 
-    const tempStr = telemetry.dht11Healthy
-      ? `${telemetry.temperature.toFixed(1)}C`
-      : 'ERR';
+    const tempStr =
+      telemetry.dht11Healthy
+        ? `${telemetry.temperature.toFixed(1)}C`
+        : 'ERR';
 
-    const humStr = telemetry.dht11Healthy
-      ? `${Math.round(telemetry.humidity)}%`
-      : 'ERR';
+    const humStr =
+      telemetry.dht11Healthy
+        ? `${Math.round(
+            telemetry.humidity
+          )}%`
+        : 'ERR';
 
     const gasStr =
-      telemetry.gasStatus === 'SPOILAGE_WARNING'
+      telemetry.gasStatus ===
+      'SPOILAGE_WARNING'
         ? 'ALRM'
         : 'OK';
 
@@ -536,38 +784,46 @@ export default function DashboardPage() {
   |--------------------------------------------------------------------------
   */
 
-  const handleConsumeItem = (id: string) => {
+  const handleConsumeItem = (
+    id: string
+  ) => {
     const item = items.find(
-      (currentItem) => currentItem.id === id
+      (currentItem) =>
+        currentItem.id === id
     );
 
     if (!item) {
       return;
     }
 
-    setItems((previous) =>
-      previous.filter(
-        (currentItem) => currentItem.id !== id
-      )
+    setItems(
+      (previous) =>
+        previous.filter(
+          (currentItem) =>
+            currentItem.id !== id
+        )
     );
 
-    setAlerts((previous) => [
-      {
-        id: `alt-${Date.now()}`,
-        level: 'INFO',
-        title: 'Item Consumed & De-registered',
-        message:
-          `${item.name} (RFID: ${item.rfidUid}) checked out. ` +
-          'Food waste successfully avoided!',
-        timestamp:
-          new Date().toLocaleTimeString(),
-        source: 'RFID',
-        resolved: true,
-        actionAdvice:
-          'Container freed for next registration.',
-      },
-      ...previous,
-    ]);
+    setAlerts(
+      (previous) => [
+        {
+          id: `alt-${Date.now()}`,
+          level: 'INFO',
+          title:
+            'Item Consumed & De-registered',
+          message:
+            `${item.name} (RFID: ${item.rfidUid}) checked out. ` +
+            'Food waste successfully avoided!',
+          timestamp:
+            new Date().toLocaleTimeString(),
+          source: 'RFID',
+          resolved: true,
+          actionAdvice:
+            'Container freed for next registration.',
+        },
+        ...previous,
+      ]
+    );
   };
 
   /*
@@ -580,24 +836,31 @@ export default function DashboardPage() {
     id: string,
     note: string
   ) => {
-    setItems((previous) =>
-      previous.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              lastInspectionNote: note,
-              status:
-                note
-                  .toLowerCase()
-                  .includes('spoil') ||
-                note
-                  .toLowerCase()
-                  .includes('rot')
-                  ? 'CHECK_FOOD'
-                  : item.status,
-            }
-          : item
-      )
+    setItems(
+      (previous) =>
+        previous.map(
+          (item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  lastInspectionNote:
+                    note,
+                  status:
+                    note
+                      .toLowerCase()
+                      .includes(
+                        'spoil'
+                      ) ||
+                    note
+                      .toLowerCase()
+                      .includes(
+                        'rot'
+                      )
+                      ? 'CHECK_FOOD'
+                      : item.status,
+                }
+              : item
+        )
     );
   };
 
@@ -607,29 +870,117 @@ export default function DashboardPage() {
   |--------------------------------------------------------------------------
   */
 
-  const handleAddItem = (newItem: FoodItem) => {
-    setItems((previous) => [
-      newItem,
-      ...previous,
-    ]);
+  const handleAddItem = async (
+    newItem: FoodItem
+  ): Promise<void> => {
+    try {
+      const response =
+        await fetch(
+          '/api/items',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body: JSON.stringify(
+              newItem
+            ),
+          }
+        );
 
-    setAlerts((previous) => [
-      {
-        id: `alt-${Date.now()}`,
-        level: 'INFO',
-        title: 'New Food Container Registered',
-        message:
-          `${newItem.name} registered under ` +
-          `${newItem.category} in ${newItem.storageZone}.`,
-        timestamp:
-          new Date().toLocaleTimeString(),
-        source: 'RFID',
-        resolved: true,
-        actionAdvice:
-          'Shelf-life tracking initialized with DS3231 hardware clock.',
-      },
-      ...previous,
-    ]);
+      const result =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result?.error ||
+            'Failed to register food item.'
+        );
+      }
+
+      const savedItem =
+        result.data as FoodItem;
+
+      /*
+      |--------------------------------------------------------------------------
+      | Update dashboard immediately
+      |--------------------------------------------------------------------------
+      */
+
+      setItems(
+        (previous) => [
+          savedItem,
+          ...previous.filter(
+            (item) =>
+              item.id !==
+              savedItem.id
+          ),
+        ]
+      );
+
+      /*
+      |--------------------------------------------------------------------------
+      | Remove RFID from pending UI
+      |--------------------------------------------------------------------------
+      |
+      | /api/items has already removed the UID from Redis.
+      | This just updates the dashboard immediately rather than
+      | waiting for the next 3-second polling cycle.
+      |
+      */
+
+      setPendingRfids(
+        (previous) =>
+          previous.filter(
+            (pending) =>
+              pending.tag_uid !==
+              savedItem.rfidUid
+          )
+      );
+
+      /*
+      |--------------------------------------------------------------------------
+      | Registration alert
+      |--------------------------------------------------------------------------
+      */
+
+      setAlerts(
+        (previous) => [
+          {
+            id: `alt-${Date.now()}`,
+            level: 'INFO',
+            title:
+              'Food Item Registered',
+            message:
+              `${savedItem.name} has been registered with RFID ${savedItem.rfidUid}.`,
+            timestamp:
+              new Date().toLocaleTimeString(),
+            source: 'RFID',
+            resolved: true,
+            actionAdvice:
+              'Place the RFID-tagged container inside the refrigerator and scan the tag with the RC522 reader.',
+          },
+          ...previous,
+        ]
+      );
+    } catch (error) {
+      console.error(
+        '[Dashboard] Item registration failed:',
+        error
+      );
+
+      /*
+       * Do not close the modal.
+       *
+       * RegisterItemModal will receive the thrown error
+       * and display it to the user.
+       */
+      throw error;
+    }
   };
 
   /*
@@ -646,21 +997,32 @@ export default function DashboardPage() {
      */
     setLiveStatus(null);
 
-    const mutation = scenario.applyMutation(
-      telemetry,
-      items,
-      hardware
+    const mutation =
+      scenario.applyMutation(
+        telemetry,
+        items,
+        hardware
+      );
+
+    setTelemetry(
+      mutation.telemetry
     );
 
-    setTelemetry(mutation.telemetry);
-    setItems(mutation.items);
-    setHardware(mutation.hardware);
+    setItems(
+      mutation.items
+    );
+
+    setHardware(
+      mutation.hardware
+    );
 
     if (mutation.newAlert) {
-      setAlerts((previous) => [
-        mutation.newAlert!,
-        ...previous,
-      ]);
+      setAlerts(
+        (previous) => [
+          mutation.newAlert!,
+          ...previous,
+        ]
+      );
     }
   };
 
@@ -673,9 +1035,17 @@ export default function DashboardPage() {
   const handleResetNormal = () => {
     setLiveStatus(null);
 
-    setTelemetry(INITIAL_TELEMETRY);
-    setItems(INITIAL_ITEMS);
-    setHardware(INITIAL_HARDWARE_STATUS);
+    setTelemetry(
+      INITIAL_TELEMETRY
+    );
+
+    setItems(
+      INITIAL_ITEMS
+    );
+
+    setHardware(
+      INITIAL_HARDWARE_STATUS
+    );
   };
 
   /*
@@ -684,16 +1054,20 @@ export default function DashboardPage() {
   |--------------------------------------------------------------------------
   */
 
-  const handleResolveAlert = (id: string) => {
-    setAlerts((previous) =>
-      previous.map((alert) =>
-        alert.id === id
-          ? {
-              ...alert,
-              resolved: true,
-            }
-          : alert
-      )
+  const handleResolveAlert = (
+    id: string
+  ) => {
+    setAlerts(
+      (previous) =>
+        previous.map(
+          (alert) =>
+            alert.id === id
+              ? {
+                  ...alert,
+                  resolved: true,
+                }
+              : alert
+        )
     );
   };
 
@@ -734,11 +1108,7 @@ export default function DashboardPage() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
 
-        {/*
-        |--------------------------------------------------------------------------
-        | Live connection status
-        |--------------------------------------------------------------------------
-        */}
+        {/* Live connection status */}
 
         <div
           className={`rounded-2xl border px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
@@ -771,6 +1141,7 @@ export default function DashboardPage() {
             </div>
 
             <div>
+
               <div className="font-semibold text-sm">
                 {feedOnline
                   ? 'FreshGuard Live Feed Connected'
@@ -787,6 +1158,7 @@ export default function DashboardPage() {
                   : feedError ||
                     'Waiting for telemetry from /api/feed'}
               </div>
+
             </div>
 
           </div>
@@ -809,13 +1181,49 @@ export default function DashboardPage() {
 
         </div>
 
-        {/*
-        |--------------------------------------------------------------------------
-        | Sensor fault banner
-        |--------------------------------------------------------------------------
-        */}
+        {/* Pending RFID notification */}
 
-        {overallStatus === 'SENSOR_FAULT' && (
+        {pendingRfids.length > 0 && (
+          <button
+            type="button"
+            onClick={() =>
+              setIsRegisterOpen(true)
+            }
+            className="w-full rounded-2xl border border-amber-500/30 bg-amber-950/30 px-4 py-3 text-left transition hover:bg-amber-950/50"
+          >
+            <div className="flex items-center justify-between gap-4">
+
+              <div>
+                <div className="font-semibold text-sm text-amber-200">
+                  Unregistered RFID Tag
+                  {pendingRfids.length > 1
+                    ? 's'
+                    : ''}{' '}
+                  Detected
+                </div>
+
+                <div className="text-xs text-amber-300/80 mt-1">
+                  {pendingRfids.length}{' '}
+                  RFID tag
+                  {pendingRfids.length > 1
+                    ? 's are'
+                    : ' is'}{' '}
+                  waiting for food registration.
+                </div>
+              </div>
+
+              <div className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-slate-950">
+                Register
+              </div>
+
+            </div>
+          </button>
+        )}
+
+        {/* Sensor fault banner */}
+
+        {overallStatus ===
+          'SENSOR_FAULT' && (
           <div className="p-4 rounded-2xl bg-orange-950/40 border border-orange-500/40 text-orange-200 flex items-center justify-between gap-4 shadow-lg shadow-orange-950/30">
 
             <div className="flex items-center gap-3">
@@ -831,10 +1239,11 @@ export default function DashboardPage() {
                 </h4>
 
                 <p className="text-xs text-orange-300/90 mt-0.5">
-                  Live telemetry is unavailable or one or more
-                  reported sensors are in a fault state. FreshGuard
-                  will not display a misleading &apos;Fresh/Normal&apos;
-                  status.
+                  Live telemetry is unavailable
+                  or one or more reported sensors
+                  are in a fault state. FreshGuard
+                  will not display a misleading
+                  &apos;Fresh/Normal&apos; status.
                 </p>
 
               </div>
@@ -843,7 +1252,9 @@ export default function DashboardPage() {
 
             <button
               onClick={() =>
-                setActiveTab('diagnostics')
+                setActiveTab(
+                  'diagnostics'
+                )
               }
               className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold text-xs shrink-0 cursor-pointer transition-all"
             >
@@ -853,13 +1264,10 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/*
-        |--------------------------------------------------------------------------
-        | Overview
-        |--------------------------------------------------------------------------
-        */}
+        {/* Overview */}
 
-        {activeTab === 'overview' && (
+        {activeTab ===
+          'overview' && (
           <div className="space-y-6 animate-in fade-in duration-300">
 
             <SensorCards
@@ -868,78 +1276,95 @@ export default function DashboardPage() {
 
             <LcdLedMirror
               hardware={displayHardware}
-              overallStatus={overallStatus}
+              overallStatus={
+                overallStatus
+              }
             />
 
             <TelemetryCharts
               items={items}
-              currentTemp={telemetry.temperature}
-              currentHumidity={telemetry.humidity}
-              currentGas={telemetry.gasRaw}
+              currentTemp={
+                telemetry.temperature
+              }
+              currentHumidity={
+                telemetry.humidity
+              }
+              currentGas={
+                telemetry.gasRaw
+              }
             />
 
             <FreshnessMatrix
               items={items}
-              onConsumeItem={handleConsumeItem}
-              onInspectItem={handleInspectItem}
+              onConsumeItem={
+                handleConsumeItem
+              }
+              onInspectItem={
+                handleInspectItem
+              }
               onOpenRegisterModal={() =>
-                setIsRegisterOpen(true)
+                setIsRegisterOpen(
+                  true
+                )
               }
             />
 
           </div>
         )}
 
-        {/*
-        |--------------------------------------------------------------------------
-        | Inventory
-        |--------------------------------------------------------------------------
-        */}
+        {/* Inventory */}
 
-        {activeTab === 'inventory' && (
+        {activeTab ===
+          'inventory' && (
           <div className="space-y-6 animate-in fade-in duration-300">
 
             <FreshnessMatrix
               items={items}
-              onConsumeItem={handleConsumeItem}
-              onInspectItem={handleInspectItem}
+              onConsumeItem={
+                handleConsumeItem
+              }
+              onInspectItem={
+                handleInspectItem
+              }
               onOpenRegisterModal={() =>
-                setIsRegisterOpen(true)
+                setIsRegisterOpen(
+                  true
+                )
               }
             />
 
           </div>
         )}
 
-        {/*
-        |--------------------------------------------------------------------------
-        | Diagnostics
-        |--------------------------------------------------------------------------
-        */}
+        {/* Diagnostics */}
 
-        {activeTab === 'diagnostics' && (
+        {activeTab ===
+          'diagnostics' && (
           <div className="space-y-6 animate-in fade-in duration-300">
 
             <HardwareDiagnostics
-              hardware={displayHardware}
+              hardware={
+                displayHardware
+              }
             />
 
           </div>
         )}
 
-        {/*
-        |--------------------------------------------------------------------------
-        | Alerts
-        |--------------------------------------------------------------------------
-        */}
+        {/* Alerts */}
 
-        {activeTab === 'alerts' && (
+        {activeTab ===
+          'alerts' && (
           <div className="space-y-6 animate-in fade-in duration-300">
 
             <AlertsView
               alerts={alerts}
-              onResolveAlert={handleResolveAlert}
-              onClearAll={handleClearAlerts}
+              onResolveAlert={
+                handleResolveAlert
+              }
+              onClearAll={
+                handleClearAlerts
+              }
             />
 
           </div>
@@ -947,51 +1372,68 @@ export default function DashboardPage() {
 
       </main>
 
-      {/*
-      |--------------------------------------------------------------------------
-      | Threshold modal
-      |--------------------------------------------------------------------------
-      */}
+      {/* Threshold modal */}
 
       <ThresholdMatrixModal
-        isOpen={isThresholdsOpen}
-        onClose={() =>
-          setIsThresholdsOpen(false)
+        isOpen={
+          isThresholdsOpen
         }
-        thresholds={thresholds}
-        onSaveThresholds={(updated) =>
-          setThresholds(updated)
+        onClose={() =>
+          setIsThresholdsOpen(
+            false
+          )
+        }
+        thresholds={
+          thresholds
+        }
+        onSaveThresholds={(
+          updated
+        ) =>
+          setThresholds(
+            updated
+          )
         }
       />
 
-      {/*
-      |--------------------------------------------------------------------------
-      | IoT test matrix
-      |--------------------------------------------------------------------------
-      */}
+      {/* IoT test matrix */}
 
       <IoTTestMatrixModal
-        isOpen={isTestMatrixOpen}
-        onClose={() =>
-          setIsTestMatrixOpen(false)
+        isOpen={
+          isTestMatrixOpen
         }
-        onRunScenario={handleRunScenario}
-        onResetNormal={handleResetNormal}
+        onClose={() =>
+          setIsTestMatrixOpen(
+            false
+          )
+        }
+        onRunScenario={
+          handleRunScenario
+        }
+        onResetNormal={
+          handleResetNormal
+        }
       />
 
-      {/*
-      |--------------------------------------------------------------------------
-      | Register item modal
-      |--------------------------------------------------------------------------
-      */}
+      {/* Register item modal */}
 
       <RegisterItemModal
-        isOpen={isRegisterOpen}
-        onClose={() =>
-          setIsRegisterOpen(false)
+        isOpen={
+          isRegisterOpen
         }
-        thresholds={thresholds}
-        onAddItem={handleAddItem}
+        onClose={() =>
+          setIsRegisterOpen(
+            false
+          )
+        }
+        thresholds={
+          thresholds
+        }
+        pendingRfids={
+          pendingRfids
+        }
+        onAddItem={
+          handleAddItem
+        }
       />
 
     </div>
