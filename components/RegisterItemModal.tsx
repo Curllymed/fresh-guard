@@ -1,246 +1,575 @@
 'use client';
 
-import React, { useState } from 'react';
-import {
-  Radio,
-  X,
-  Plus,
-  Tag
-} from 'lucide-react';
-import { FoodCategory, FoodItem, ThresholdMatrixEntry } from '@/lib/types';
+import { useEffect, useMemo, useState } from 'react';
+import type {
+  FoodCategory,
+  FoodItem,
+} from '../lib/types';
+
+interface ThresholdMatrixEntry {
+  category: FoodCategory;
+  tempMin: number;
+  tempMax: number;
+  humidityMin: number;
+  humidityMax: number;
+  maxDays: number;
+}
+
+interface PendingRfid {
+  event_id: string;
+  timestamp: string;
+  tag_uid: string;
+  status: 'UNREGISTERED';
+}
 
 interface RegisterItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   thresholds: ThresholdMatrixEntry[];
-  onAddItem: (item: FoodItem) => void;
+  pendingRfids: PendingRfid[];
+  onAddItem: (item: FoodItem) => Promise<void> | void;
 }
 
-export const RegisterItemModal: React.FC<RegisterItemModalProps> = ({
+export default function RegisterItemModal({
   isOpen,
   onClose,
   thresholds,
+  pendingRfids,
   onAddItem,
-}) => {
-  const [rfidUid, setRfidUid] = useState('7E-44-12-BC');
+}: RegisterItemModalProps) {
+  const [rfidUid, setRfidUid] = useState('');
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<FoodCategory>('Dairy');
+  const [category, setCategory] =
+    useState<FoodCategory>('Dairy');
   const [quantity, setQuantity] = useState('1 Unit');
-  const [storageZone, setStorageZone] = useState<
-    'Shelf 1 (Chilled)' | 'Shelf 2 (Main)' | 'Crisper Drawer' | 'Door Rack'
-  >('Shelf 1 (Chilled)');
+  const [storageZone, setStorageZone] =
+    useState<FoodItem['storageZone']>(
+      'Shelf 1 (Chilled)'
+    );
 
-  if (!isOpen) return null;
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
+  const [error, setError] = useState('');
 
-  const thresholdForCat = thresholds.find((t) => t.category === category) || thresholds[0];
-  const maxDays = thresholdForCat?.maxDays || 5;
+  /*
+   * Select the first pending RFID automatically
+   * whenever the modal opens and pending tags exist.
+   */
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
 
-  const handleSimulateRfidTap = () => {
-    // Generate realistic hex UID
-    const hex = Array.from({ length: 4 }, () =>
-      Math.floor(Math.random() * 256)
-        .toString(16)
+    setError('');
+
+    if (pendingRfids.length > 0) {
+      const stillAvailable = pendingRfids.some(
+        (item) => item.tag_uid === rfidUid
+      );
+
+      if (!stillAvailable) {
+        setRfidUid(
+          pendingRfids[0].tag_uid
+        );
+      }
+    } else {
+      setRfidUid('');
+    }
+  }, [
+    isOpen,
+    pendingRfids,
+    rfidUid,
+  ]);
+
+  /*
+   * Find the threshold configuration for the
+   * currently selected food category.
+   */
+  const selectedThreshold = useMemo(() => {
+    return thresholds.find(
+      (threshold) =>
+        threshold.category === category
+    );
+  }, [thresholds, category]);
+
+  /*
+   * Calculate storage/expiry information from
+   * the selected category.
+   */
+  const maxDays =
+    selectedThreshold?.maxDays ?? 7;
+
+  const storedDate = useMemo(() => {
+    return new Date();
+  }, [isOpen]);
+
+  const storedDateStr = useMemo(() => {
+    const year = storedDate.getFullYear();
+    const month = String(
+      storedDate.getMonth() + 1
+    ).padStart(2, '0');
+    const day = String(
+      storedDate.getDate()
+    ).padStart(2, '0');
+    const hours = String(
+      storedDate.getHours()
+    ).padStart(2, '0');
+    const minutes = String(
+      storedDate.getMinutes()
+    ).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  }, [storedDate]);
+
+  const expiryDate = useMemo(() => {
+    const date = new Date(storedDate);
+    date.setDate(
+      date.getDate() + maxDays
+    );
+
+    return date;
+  }, [storedDate, maxDays]);
+
+  const expiryStr = useMemo(() => {
+    const year = expiryDate.getFullYear();
+    const month = String(
+      expiryDate.getMonth() + 1
+    ).padStart(2, '0');
+    const day = String(
+      expiryDate.getDate()
+    ).padStart(2, '0');
+
+    return `${year}-${month}-${day} 23:59`;
+  }, [expiryDate]);
+
+  /*
+   * Do not render the modal when it is closed.
+   */
+  if (!isOpen) {
+    return null;
+  }
+
+  const handleSubmit = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    setError('');
+
+    if (!rfidUid) {
+      setError(
+        'Please select a detected RFID tag.'
+      );
+      return;
+    }
+
+    if (!name.trim()) {
+      setError(
+        'Please enter the food item name.'
+      );
+      return;
+    }
+
+    if (!quantity.trim()) {
+      setError(
+        'Please enter the quantity.'
+      );
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      const normalizedUid = rfidUid
+        .trim()
         .toUpperCase()
-        .padStart(2, '0')
-    ).join('-');
-    setRfidUid(hex);
-  };
+        .replace(/[^A-F0-9]/g, '');
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
+      const newItem: FoodItem = {
+        id: `item-${Date.now()}`,
+        rfidUid: normalizedUid,
+        name: name.trim(),
+        category,
+        quantity: quantity.trim(),
+        storageZone,
+        storedDate: storedDateStr,
+        expiryDate: expiryStr,
+        maxStorageDays: maxDays,
+        daysRemaining: maxDays,
+        status: 'FRESH',
+        storageDurationHours: 0,
+        lastInspectionNote:
+          'Initial registration via RFID-RC522 scanner.',
+      };
 
-    const now = new Date();
-    const storedDateStr =
-      now.toISOString().split('T')[0] +
-      ' ' +
-      now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      await onAddItem(newItem);
 
-    const expiry = new Date(now.getTime() + maxDays * 24 * 60 * 60 * 1000);
-    const expiryStr = expiry.toISOString().split('T')[0] + ' 23:59';
+      /*
+       * Only reset and close after the dashboard
+       * successfully registers the item.
+       */
+      setRfidUid('');
+      setName('');
+      setQuantity('1 Unit');
+      setCategory('Dairy');
+      setStorageZone(
+        'Shelf 1 (Chilled)'
+      );
+      setError('');
 
-    const newItem: FoodItem = {
-      id: `item-${Date.now()}`,
-      rfidUid,
-      name,
-      category,
-      quantity,
-      storageZone,
-      storedDate: storedDateStr,
-      expiryDate: expiryStr,
-      maxStorageDays: maxDays,
-      daysRemaining: maxDays,
-      status: 'FRESH',
-      storageDurationHours: 0,
-      lastInspectionNote: 'Initial registration via RFID-RC522 scanner.',
-    };
+      onClose();
+    } catch (err) {
+      console.error(
+        '[RegisterItemModal] Registration failed:',
+        err
+      );
 
-    onAddItem(newItem);
-    onClose();
-    setName('');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to register food item.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="w-full max-w-lg glass-panel rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl space-y-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+  <div className="my-4 flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <Radio className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white tracking-wide">
-                Register Food Item via RFID-Tag/Card
-              </h2>
-              <p className="text-xs text-slate-400">
-               Food Container Tagging
-              </p>
-            </div>
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <div>
+            <h2 className="text-lg font-semibold text-white">
+              Register Food Item
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Register a detected RFID tag with
+              food storage details.
+            </p>
           </div>
+
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+            disabled={isSubmitting}
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <X className="w-5 h-5" />
+            <svg
+              className="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          {/* RFID Tag UID Field with Scanner Button */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex-1 overflow-y-auto space-y-6 p-6"
+        >
+          {/* RFID */}
           <div>
-            <label className="text-slate-400 font-mono block mb-1 font-semibold flex items-center justify-between">
-              <span>RFID Card UID :</span>
-              <button
-                type="button"
-                onClick={handleSimulateRfidTap}
-                className="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-sans cursor-pointer"
-              >
-                Simulate RC522 Card Tap
-              </button>
+            <label className="mb-2 block text-sm font-medium text-slate-200">
+              RFID Tag
             </label>
-            <div className="relative">
-              <Tag className="w-4 h-4 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={rfidUid}
-                onChange={(e) => setRfidUid(e.target.value)}
-                required
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900 border border-white/10 font-mono text-cyan-300 text-xs focus:border-cyan-400 focus:outline-none"
-              />
-            </div>
+
+            {pendingRfids.length === 0 ? (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14A2 2 0 003.84 21h16.32a2 2 0 001.73-3.14l-8.18-14a2 2 0 00-3.42 0z"
+                      />
+                    </svg>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-amber-300">
+                      No unregistered RFID tags detected
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      Place a new RFID tag near the
+                      RC522 reader. The detected UID
+                      will appear here automatically.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <select
+                  value={rfidUid}
+                  onChange={(event) =>
+                    setRfidUid(
+                      event.target.value
+                    )
+                  }
+                  disabled={isSubmitting}
+                  className="w-full rounded-xl border border-white/10 bg-[#080b10] px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">
+                    Select detected RFID tag
+                  </option>
+
+                  {pendingRfids.map(
+                    (pending) => (
+                      <option
+                        key={pending.tag_uid}
+                        value={pending.tag_uid}
+                      >
+                        {pending.tag_uid}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <p className="mt-2 text-xs text-slate-500">
+                  {pendingRfids.length}{' '}
+                  unregistered tag
+                  {pendingRfids.length === 1
+                    ? ''
+                    : 's'}{' '}
+                  detected.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Food Name */}
           <div>
-            <label className="text-slate-400 font-mono block mb-1 font-semibold">
-              Food Item Name:
+            <label className="mb-2 block text-sm font-medium text-slate-200">
+              Food Name
             </label>
+
             <input
               type="text"
-              placeholder="e.g. Pasteurized Whole Milk, Greek Yogurt, Ribeye Steak..."
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-xs focus:border-emerald-400 focus:outline-none"
+              onChange={(event) =>
+                setName(event.target.value)
+              }
+              placeholder="e.g. Fresh Milk"
+              disabled={isSubmitting}
+              className="w-full rounded-xl border border-white/10 bg-[#080b10] px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none transition focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
 
-          {/* Category & Quantity */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Category + Quantity */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-slate-400 font-mono block mb-1 font-semibold">
-                Food Category:
+              <label className="mb-2 block text-sm font-medium text-slate-200">
+                Category
               </label>
+
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value as FoodCategory)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-xs focus:border-emerald-400 focus:outline-none cursor-pointer"
+                onChange={(event) =>
+                  setCategory(
+                    event.target.value as FoodCategory
+                  )
+                }
+                disabled={isSubmitting}
+                className="w-full rounded-xl border border-white/10 bg-[#080b10] px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {thresholds.map((t) => (
-                  <option key={t.category} value={t.category}>
-                    {t.category}
-                  </option>
-                ))}
+                <option value="Dairy">
+                  Dairy
+                </option>
+
+                <option value="Meat & Poultry">
+                  Meat & Poultry
+                </option>
+
+                <option value="Seafood">
+                  Seafood
+                </option>
+
+                <option value="Fresh Produce">
+                  Fresh Produce
+                </option>
+
+                <option value="Leftovers & Cooked">
+                  Leftovers & Cooked
+                </option>
+
+                <option value="Beverages">
+                  Beverages
+                </option>
+
+                <option value="Bakery & Sweets">
+                  Bakery & Sweets
+                </option>
               </select>
             </div>
 
             <div>
-              <label className="text-slate-400 font-mono block mb-1 font-semibold">
-                Quantity / Container:
+              <label className="mb-2 block text-sm font-medium text-slate-200">
+                Quantity
               </label>
+
               <input
                 type="text"
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="e.g. 500ml, 250g, 1 Container"
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-xs focus:border-emerald-400 focus:outline-none"
+                onChange={(event) =>
+                  setQuantity(
+                    event.target.value
+                  )
+                }
+                placeholder="e.g. 1 Bottle"
+                disabled={isSubmitting}
+                className="w-full rounded-xl border border-white/10 bg-[#080b10] px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none transition focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
           </div>
 
           {/* Storage Zone */}
           <div>
-            <label className="text-slate-400 font-mono block mb-1 font-semibold">
-              Storage Zone:
+            <label className="mb-2 block text-sm font-medium text-slate-200">
+              Storage Zone
             </label>
+
             <select
               value={storageZone}
-              onChange={(e) =>
+              onChange={(event) =>
                 setStorageZone(
-                  e.target.value as
-                    | 'Shelf 1 (Chilled)'
-                    | 'Shelf 2 (Main)'
-                    | 'Crisper Drawer'
-                    | 'Door Rack'
+                  event.target.value as FoodItem['storageZone']
                 )
               }
-              className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-xs focus:border-emerald-400 focus:outline-none cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full rounded-xl border border-white/10 bg-[#080b10] px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="Shelf 1 (Chilled)">Shelf 1 (Coldest / Dairy & Meat)</option>
-              <option value="Shelf 2 (Main)">Shelf 2 (Main Compartment)</option>
-              <option value="Crisper Drawer">Crisper Drawer (High Humidity Produce)</option>
-              <option value="Door Rack">Door Rack (Beverages & Condiments)</option>
+              <option value="Shelf 1 (Chilled)">
+                Shelf 1 (Chilled)
+              </option>
+
+              <option value="Shelf 2 (Main)">
+                Shelf 2 (Main)
+              </option>
+
+              <option value="Crisper Drawer">
+                Crisper Drawer
+              </option>
+
+              <option value="Door Rack">
+                Door Rack
+              </option>
             </select>
           </div>
 
-          {/* Threshold Matrix Preview */}
-          <div className="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1 text-[11px] text-slate-400 font-mono">
-            <div className="flex justify-between">
-              <span>Threshold Shelf Life:</span>
-              <span className="text-emerald-400 font-bold">{maxDays} Days</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Temp Tolerance:</span>
-              <span className="text-cyan-400">
-                {thresholdForCat.tempMin}°C - {thresholdForCat.tempMax}°C
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>DS3231 Timestamp Anchor:</span>
-              <span className="text-slate-300">Synchronized</span>
-            </div>
-          </div>
+          {/* Threshold Preview */}
+          {selectedThreshold && (
+            <div className="rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-medium text-emerald-300">
+                  Storage Threshold
+                </h3>
 
-          {/* Submit */}
-          <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
+                  {maxDays} days
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                <div>
+                  <p className="text-slate-500">
+                    Temperature
+                  </p>
+
+                  <p className="mt-1 font-medium text-slate-200">
+                    {selectedThreshold.tempMin}
+                    °C – {selectedThreshold.tempMax}
+                    °C
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-500">
+                    Humidity
+                  </p>
+
+                  <p className="mt-1 font-medium text-slate-200">
+                    {selectedThreshold.humidityMin}
+                    % – {selectedThreshold.humidityMax}
+                    %
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-500">
+                    Stored
+                  </p>
+
+                  <p className="mt-1 font-medium text-slate-200">
+                    {storedDateStr}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-500">
+                    Expires
+                  </p>
+
+                  <p className="mt-1 font-medium text-slate-200">
+                    {expiryStr}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3">
+              <p className="text-sm text-red-300">
+                {error}
+              </p>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-3 border-t border-white/10 pt-5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 cursor-pointer"
+              disabled={isSubmitting}
+              className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>
+
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
+              disabled={
+                isSubmitting ||
+                pendingRfids.length === 0 ||
+                !rfidUid
+              }
+              className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Plus className="w-4 h-4" />
-              Register to Food Guardian
+              {isSubmitting
+                ? 'Registering...'
+                : 'Register Item'}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
-};
+}
