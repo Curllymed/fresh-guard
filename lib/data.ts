@@ -382,7 +382,7 @@ export const IOT_TEST_SCENARIOS: IoTTestScenario[] = [
           lcd1602: {
             ...h.lcd1602,
             line1: 'T:9.2C HIGH TEMP!',
-            line2: 'ALARM: CHECK FOOD',
+            line2: 'CHECK FOOD',
           },
         },
         newAlert: alert,

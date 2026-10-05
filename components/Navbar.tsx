@@ -157,14 +157,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             {/* IoT Test Matrix Suite */}
-            <button
+            {/* <button
               onClick={onOpenTestMatrix}
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-purple-950/40 hover:bg-purple-900/60 text-purple-300 border border-purple-500/30 transition-all cursor-pointer"
               title="IoT Test Matrix Evaluation Suite "
             >
               <FlaskConical className="w-4 h-4 text-purple-400" />
               <span className="hidden xl:inline">Test Matrix </span>
-            </button>
+            </button> */}
 
             {/* Alert Notifications Button */}
             <button

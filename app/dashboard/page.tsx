@@ -63,6 +63,8 @@ interface FeedTelemetry {
   temperature: number;
   humidity: number;
 
+  piIpAddress: string;
+
   gas_voltage: number;
   gasRaw: number;
   gasBaseline: number;
@@ -99,10 +101,6 @@ interface FeedResponse {
 |--------------------------------------------------------------------------
 | Pending RFID
 |--------------------------------------------------------------------------
-|
-| These are RFID tags detected by the Raspberry Pi that have not yet
-| been registered as food items.
-|
 */
 
 interface PendingRfid {
@@ -114,10 +112,43 @@ interface PendingRfid {
 
 /*
 |--------------------------------------------------------------------------
+| Dashboard item
+|--------------------------------------------------------------------------
+|
+| The extra inStorage property comes directly from the Raspberry Pi
+| RFID telemetry. It does not replace the existing FoodItem structure.
+|
+*/
+
+type DashboardFoodItem = FoodItem & {
+  inStorage?: boolean;
+};
+
+/*
+|--------------------------------------------------------------------------
 | Helpers
 |--------------------------------------------------------------------------
 */
 
+/**
+ * Normalize RFID UID for reliable comparison.
+ *
+ * The Raspberry Pi sends values such as:
+ *     845404047127
+ *
+ * The dashboard may receive the same UID with formatting differences,
+ * so comparisons are always performed using this normalized value.
+ */
+function normalizeUid(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-F0-9]/g, '');
+}
+
+/**
+ * Convert the backend sensor_fault value into a boolean.
+ */
 function isSensorFault(
   value: boolean | string | null
 ): boolean {
@@ -144,6 +175,10 @@ function isSensorFault(
   return false;
 }
 
+/**
+ * Convert the Raspberry Pi overall status into the frontend
+ * FreshnessState used by the existing dashboard components.
+ */
 function parseFreshnessStatus(
   status: string,
   sensorFault: boolean
@@ -152,7 +187,7 @@ function parseFreshnessStatus(
     return 'SENSOR_FAULT';
   }
 
-  const normalized = status
+  const normalized = String(status ?? '')
     .trim()
     .toLowerCase();
 
@@ -192,6 +227,59 @@ function parseFreshnessStatus(
   return null;
 }
 
+/**
+ * Convert the actual backend gasRatio/status into the gas status
+ * expected by the existing SensorTelemetry type.
+ *
+ * The Raspberry Pi remains authoritative for the overall food status.
+ * This function only translates the payload into the existing UI type.
+ */
+function parseGasStatus(
+  gasRatio: number,
+  status: string,
+  sensorFault: boolean
+): SensorTelemetry['gasStatus'] {
+  if (sensorFault) {
+    return 'SPOILAGE_WARNING';
+  }
+
+  const normalized = String(status ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (
+    normalized.includes('spoilage') ||
+    normalized.includes('check food') ||
+    normalized.includes('critical') ||
+    normalized.includes('alarm')
+  ) {
+    return 'SPOILAGE_WARNING';
+  }
+
+  if (
+    normalized.includes('elevated') ||
+    normalized.includes('warning') ||
+    gasRatio >= 1.2
+  ) {
+    return 'ELEVATED';
+  }
+
+  if (
+    normalized.includes('normal')
+  ) {
+    return 'NORMAL';
+  }
+
+  if (
+    normalized.includes('clean') ||
+    normalized.includes('fresh')
+  ) {
+    return 'CLEAN';
+  }
+
+  return 'NORMAL';
+}
+
 /*
 |--------------------------------------------------------------------------
 | Dashboard
@@ -208,13 +296,27 @@ export default function DashboardPage() {
   const [pendingRfids, setPendingRfids] =
     useState<PendingRfid[]>([]);
 
+  /*
+   * Start with the existing UI-compatible structure.
+   *
+   * As soon as the Raspberry Pi sends telemetry, these values are
+   * replaced by actual backend values.
+   */
   const [telemetry, setTelemetry] =
     useState<SensorTelemetry>(
       INITIAL_TELEMETRY
     );
 
+  /*
+   * Registered food items come from /api/items.
+   *
+   * The initial data is retained only until the first successful
+   * registry response arrives.
+   */
   const [items, setItems] =
-    useState<FoodItem[]>(INITIAL_ITEMS);
+    useState<DashboardFoodItem[]>(
+      INITIAL_ITEMS as DashboardFoodItem[]
+    );
 
   const [hardware, setHardware] =
     useState<HardwareStatus>(
@@ -304,7 +406,8 @@ export default function DashboardPage() {
           );
         }
 
-        const result = await response.json();
+        const result =
+          await response.json();
 
         if (
           result.success &&
@@ -327,7 +430,7 @@ export default function DashboardPage() {
   | Fetch registered food items
   |--------------------------------------------------------------------------
   |
-  | The /api/items endpoint is now the authoritative remote registry.
+  | /api/items is the authoritative food registry.
   |
   */
 
@@ -351,29 +454,29 @@ export default function DashboardPage() {
           );
         }
 
-        const result = await response.json();
+        const result =
+          await response.json();
 
-        /*
-         * /api/items currently returns the array directly.
-         */
+        let remoteItems: DashboardFoodItem[] = [];
+
         if (Array.isArray(result)) {
-          setItems(
-            result as FoodItem[]
-          );
-          return;
-        }
-
-        /*
-         * Also support a wrapped response in case the API
-         * is changed later.
-         */
-        if (
+          remoteItems =
+            result as DashboardFoodItem[];
+        } else if (
           result?.success &&
           Array.isArray(result.data)
         ) {
-          setItems(
-            result.data as FoodItem[]
-          );
+          remoteItems =
+            result.data as DashboardFoodItem[];
+        }
+
+        /*
+         * Only replace the registry when the API actually returned
+         * an array. This prevents a malformed response from wiping
+         * the existing dashboard state.
+         */
+        if (Array.isArray(remoteItems)) {
+          setItems(remoteItems);
         }
       } catch (error) {
         console.error(
@@ -386,15 +489,6 @@ export default function DashboardPage() {
   /*
   |--------------------------------------------------------------------------
   | Live telemetry polling
-  |--------------------------------------------------------------------------
-  |
-  | /api/feed is polled every 3 seconds.
-  |
-  | Pending RFID tags are also checked every 3 seconds.
-  |
-  | Registered items are refreshed from /api/items every 3 seconds.
-  |
-  | IoT Test Matrix pauses all live polling while open.
   |--------------------------------------------------------------------------
   */
 
@@ -435,11 +529,20 @@ export default function DashboardPage() {
             );
           }
 
-          const data = result.data;
+          const data =
+            result.data;
+
+            console.log(data);
 
           if (cancelled) {
             return;
           }
+
+          /*
+          |--------------------------------------------------------------------------
+          | Parse actual backend status
+          |--------------------------------------------------------------------------
+          */
 
           const sensorFault =
             isSensorFault(
@@ -452,10 +555,22 @@ export default function DashboardPage() {
               sensorFault
             );
 
+          const parsedGasStatus =
+            parseGasStatus(
+              data.gasRatio,
+              data.status,
+              sensorFault
+            );
+
           /*
           |--------------------------------------------------------------------------
-          | Update telemetry
+          | Update telemetry from Raspberry Pi payload
           |--------------------------------------------------------------------------
+          |
+          | IMPORTANT:
+          |
+          | These values now come directly from /api/feed.
+          |
           */
 
           setTelemetry(
@@ -480,6 +595,9 @@ export default function DashboardPage() {
               gasRatio:
                 data.gasRatio,
 
+              gasStatus:
+                parsedGasStatus,
+
               doorOpen:
                 data.door_open,
 
@@ -489,6 +607,17 @@ export default function DashboardPage() {
               doorOpenCountToday:
                 data.doorOpenCountToday,
 
+              /*
+               * The backend currently provides aggregate sensor_fault,
+               * not separate DHT11 / ADS1115 / MQ-135 health fields.
+               *
+               * Therefore we do NOT claim individual health here.
+               *
+               * Existing components still require these booleans, so
+               * the aggregate fault is used only as a compatibility
+               * representation until individual health fields are
+               * added to the backend payload.
+               */
               dht11Healthy:
                 !sensorFault,
 
@@ -514,6 +643,59 @@ export default function DashboardPage() {
                 data.timestamp,
             })
           );
+
+          /*
+          |--------------------------------------------------------------------------
+          | Update registered item physical presence
+          |--------------------------------------------------------------------------
+          |
+          | /api/items tells us WHAT the food item is.
+          |
+          | /api/feed -> rfidItems tells us WHERE the item physically is.
+          |
+          | Therefore in_storage from the Raspberry Pi takes priority.
+          |--------------------------------------------------------------------------
+          */
+
+          if (
+            Array.isArray(data.rfidItems)
+          ) {
+            setItems(
+              (previous) =>
+                previous.map(
+                  (item) => {
+                    const itemUid =
+                      normalizeUid(
+                        item.rfidUid
+                      );
+
+                    const rfidState =
+                      data.rfidItems.find(
+                        (rfidItem) =>
+                          normalizeUid(
+                            rfidItem.tag_uid
+                          ) === itemUid
+                      );
+
+                    if (
+                      !rfidState
+                    ) {
+                      return {
+                        ...item,
+                        inStorage:
+                          false,
+                      };
+                    }
+
+                    return {
+                      ...item,
+                      inStorage:
+                        rfidState.in_storage,
+                    };
+                  }
+                )
+            );
+          }
 
           /*
           |--------------------------------------------------------------------------
@@ -581,7 +763,7 @@ export default function DashboardPage() {
 
     /*
     |--------------------------------------------------------------------------
-    | Pause live polling during IoT testing
+    | Pause polling while IoT Test Matrix is open
     |--------------------------------------------------------------------------
     */
 
@@ -593,7 +775,7 @@ export default function DashboardPage() {
 
     /*
     |--------------------------------------------------------------------------
-    | Poll all live data every 3 seconds
+    | Poll every 3 seconds
     |--------------------------------------------------------------------------
     */
 
@@ -606,6 +788,7 @@ export default function DashboardPage() {
 
     return () => {
       cancelled = true;
+
       window.clearInterval(
         interval
       );
@@ -625,8 +808,7 @@ export default function DashboardPage() {
   const overallStatus:
     FreshnessState = useMemo(() => {
     /*
-     * If the API connection has failed after
-     * initial loading, do not show Fresh.
+     * API connection failure.
      */
     if (
       !feedLoading &&
@@ -647,24 +829,16 @@ export default function DashboardPage() {
     }
 
     /*
-     * Temperature safety override.
-     */
-    if (
-      telemetry.temperature > 8.0
-    ) {
-      return 'CHECK_FOOD';
-    }
-
-    /*
-     * During normal live operation,
-     * Raspberry Pi status is authoritative.
+     * Raspberry Pi is authoritative for live status.
      */
     if (liveStatus) {
       return liveStatus;
     }
 
     /*
-     * Local test fallback.
+     * Local fallback.
+     *
+     * This is mainly useful while using the IoT Test Matrix.
      */
     if (
       telemetry.gasStatus ===
@@ -719,6 +893,7 @@ export default function DashboardPage() {
       'SENSOR_FAULT'
     ) {
       activeLed = 'YELLOW';
+
       lcdLine2 =
         'SENSOR FAULT §1.7';
     } else if (
@@ -726,13 +901,15 @@ export default function DashboardPage() {
       'CHECK_FOOD'
     ) {
       activeLed = 'RED';
+
       lcdLine2 =
-        'ALARM: CHECK FOOD';
+        'CHECK FOOD';
     } else if (
       overallStatus ===
       'USE_SOON'
     ) {
       activeLed = 'YELLOW';
+
       lcdLine2 =
         'STATE: USE SOON';
     }
@@ -903,7 +1080,7 @@ export default function DashboardPage() {
       }
 
       const savedItem =
-        result.data as FoodItem;
+        result.data as DashboardFoodItem;
 
       /*
       |--------------------------------------------------------------------------
@@ -926,19 +1103,21 @@ export default function DashboardPage() {
       |--------------------------------------------------------------------------
       | Remove RFID from pending UI
       |--------------------------------------------------------------------------
-      |
-      | /api/items has already removed the UID from Redis.
-      | This just updates the dashboard immediately rather than
-      | waiting for the next 3-second polling cycle.
-      |
       */
+
+      const registeredUid =
+        normalizeUid(
+          savedItem.rfidUid
+        );
 
       setPendingRfids(
         (previous) =>
           previous.filter(
             (pending) =>
-              pending.tag_uid !==
-              savedItem.rfidUid
+              normalizeUid(
+                pending.tag_uid
+              ) !==
+              registeredUid
           )
       );
 
@@ -974,10 +1153,7 @@ export default function DashboardPage() {
       );
 
       /*
-       * Do not close the modal.
-       *
-       * RegisterItemModal will receive the thrown error
-       * and display it to the user.
+       * RegisterItemModal handles the thrown error.
        */
       throw error;
     }
@@ -1040,7 +1216,7 @@ export default function DashboardPage() {
     );
 
     setItems(
-      INITIAL_ITEMS
+      INITIAL_ITEMS as DashboardFoodItem[]
     );
 
     setHardware(
@@ -1276,9 +1452,11 @@ export default function DashboardPage() {
 
             <LcdLedMirror
               hardware={displayHardware}
+              telemetry={telemetry}
               overallStatus={
                 overallStatus
               }
+              itemCount={items.length}
             />
 
             <TelemetryCharts
